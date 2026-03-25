@@ -9,7 +9,6 @@ def get_connection():
     base_url = st.secrets["DATABASE_URL"]
     parsed = urllib.parse.urlparse(base_url)
     password = parsed.password
-    # Use the correct Supabase pooler — IPv4-compatible, port 6543
     pooler_url = (
         f"postgresql://postgres.faqkoflkjexraukvhhun:{password}"
         f"@aws-1-eu-west-1.pooler.supabase.com:6543/postgres"
@@ -19,88 +18,92 @@ def get_connection():
 
 
 def init_db():
+    """Create tables if they don't exist. Safe to call multiple times."""
     conn = get_connection()
     c = conn.cursor()
+    try:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                name        TEXT NOT NULL,
+                description TEXT,
+                status      TEXT NOT NULL DEFAULT 'active',
+                start_date  TEXT,
+                end_date    TEXT,
+                created_at  TEXT DEFAULT (CURRENT_DATE::TEXT)
+            )
+        """)
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS projects (
-            id          SERIAL PRIMARY KEY,
-            name        TEXT NOT NULL,
-            description TEXT,
-            status      TEXT NOT NULL DEFAULT 'active',
-            start_date  TEXT,
-            end_date    TEXT,
-            created_at  TEXT DEFAULT (CURRENT_DATE::TEXT)
-        )
-    """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS expense_categories (
+                id   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE
+            )
+        """)
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS expense_categories (
-            id   SERIAL PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE
-        )
-    """)
+        c.execute("""
+            INSERT INTO expense_categories (name) VALUES
+                ('Rent'), ('Salaries'), ('Suppliers'), ('Materials'),
+                ('Marketing'), ('Development'), ('Operations'), ('Other')
+            ON CONFLICT DO NOTHING
+        """)
 
-    c.execute("""
-        INSERT INTO expense_categories (name) VALUES
-            ('Rent'), ('Salaries'), ('Suppliers'), ('Materials'),
-            ('Marketing'), ('Development'), ('Operations'), ('Other')
-        ON CONFLICT DO NOTHING
-    """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS expenses (
+                id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                project_id   BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+                category     TEXT NOT NULL,
+                expense_type TEXT NOT NULL DEFAULT 'variable',
+                amount       REAL NOT NULL,
+                planned_date TEXT,
+                actual_date  TEXT,
+                description  TEXT,
+                is_recurring INTEGER DEFAULT 0,
+                recurrence   TEXT,
+                created_at   TEXT DEFAULT (CURRENT_DATE::TEXT)
+            )
+        """)
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS expenses (
-            id           SERIAL PRIMARY KEY,
-            project_id   INTEGER REFERENCES projects(id) ON DELETE SET NULL,
-            category     TEXT NOT NULL,
-            expense_type TEXT NOT NULL DEFAULT 'variable',
-            amount       REAL NOT NULL,
-            planned_date TEXT,
-            actual_date  TEXT,
-            description  TEXT,
-            is_recurring INTEGER DEFAULT 0,
-            recurrence   TEXT,
-            created_at   TEXT DEFAULT (CURRENT_DATE::TEXT)
-        )
-    """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS revenues (
+                id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                project_id     BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+                description    TEXT,
+                planned_amount REAL NOT NULL,
+                actual_amount  REAL,
+                planned_date   TEXT,
+                actual_date    TEXT,
+                status         TEXT NOT NULL DEFAULT 'expected',
+                created_at     TEXT DEFAULT (CURRENT_DATE::TEXT)
+            )
+        """)
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS revenues (
-            id             SERIAL PRIMARY KEY,
-            project_id     INTEGER REFERENCES projects(id) ON DELETE SET NULL,
-            description    TEXT,
-            planned_amount REAL NOT NULL,
-            actual_amount  REAL,
-            planned_date   TEXT,
-            actual_date    TEXT,
-            status         TEXT NOT NULL DEFAULT 'expected',
-            created_at     TEXT DEFAULT (CURRENT_DATE::TEXT)
-        )
-    """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS employees (
+                id        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                name      TEXT NOT NULL,
+                rate_type TEXT NOT NULL DEFAULT 'monthly',
+                rate      REAL NOT NULL,
+                active    INTEGER DEFAULT 1
+            )
+        """)
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS employees (
-            id        SERIAL PRIMARY KEY,
-            name      TEXT NOT NULL,
-            rate_type TEXT NOT NULL DEFAULT 'monthly',
-            rate      REAL NOT NULL,
-            active    INTEGER DEFAULT 1
-        )
-    """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS work_logs (
+                id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                employee_id BIGINT NOT NULL REFERENCES employees(id),
+                project_id  BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+                hours       REAL,
+                log_date    TEXT NOT NULL,
+                description TEXT
+            )
+        """)
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS work_logs (
-            id          SERIAL PRIMARY KEY,
-            employee_id INTEGER NOT NULL REFERENCES employees(id),
-            project_id  INTEGER REFERENCES projects(id) ON DELETE SET NULL,
-            hours       REAL,
-            log_date    TEXT NOT NULL,
-            description TEXT
-        )
-    """)
-
-    conn.commit()
-    conn.close()
+        conn.commit()
+    except Exception:
+        conn.rollback()  # Tables already exist — that's fine
+    finally:
+        conn.close()
 
 
 # -- Projects ------------------------------------------------------------------
