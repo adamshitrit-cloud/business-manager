@@ -1,22 +1,37 @@
 import psycopg2
 import psycopg2.extras
 import streamlit as st
-import socket
 import urllib.parse
 
 
+@st.cache_resource
+def _get_pooler_url():
+    """Auto-discover working Supabase pooler (IPv4). Cached for server lifetime."""
+    base_url = st.secrets["DATABASE_URL"]
+    parsed = urllib.parse.urlparse(base_url)
+    password = parsed.password
+    dbname = parsed.path.lstrip('/')
+    project = 'faqkoflkjexraukvhhun'
+    regions = [
+        'eu-central-1', 'eu-west-1', 'eu-west-2',
+        'us-east-1', 'us-west-1',
+        'ap-southeast-1', 'ap-northeast-1',
+    ]
+    for region in regions:
+        host = f'aws-0-{region}.pooler.supabase.com'
+        url = f'postgresql://postgres.{project}:{password}@{host}:5432/{dbname}'
+        try:
+            conn = psycopg2.connect(url, sslmode='require', connect_timeout=4)
+            conn.close()
+            return url
+        except Exception:
+            continue
+    return base_url  # last resort
+
+
 def get_connection():
-    url = st.secrets["DATABASE_URL"]
-    # Force IPv4 — Streamlit Cloud has no IPv6 routing to Supabase
-    try:
-        parsed = urllib.parse.urlparse(url)
-        hostname = parsed.hostname
-        ipv4 = socket.getaddrinfo(hostname, None, socket.AF_INET)[0][4][0]
-        url = url.replace(f"@{hostname}", f"@{ipv4}")
-    except Exception:
-        pass
-    conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor, sslmode="require")
-    return conn
+    url = _get_pooler_url()
+    return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor, sslmode='require')
 
 
 def init_db():
