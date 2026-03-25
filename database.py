@@ -104,7 +104,7 @@ def init_db():
     conn.close()
 
 
-# ── Projects ──────────────────────────────────────────────────────────────────
+# -- Projects ------------------------------------------------------------------
 
 def get_projects(status=None):
     conn = get_connection()
@@ -148,7 +148,7 @@ def delete_project(project_id):
     conn.close()
 
 
-# ── Expenses ──────────────────────────────────────────────────────────────────
+# -- Expenses ------------------------------------------------------------------
 
 def get_expense_categories():
     conn = get_connection()
@@ -205,7 +205,7 @@ def delete_expense(expense_id):
     conn.close()
 
 
-# ── Revenues ──────────────────────────────────────────────────────────────────
+# -- Revenues ------------------------------------------------------------------
 
 def get_revenues(project_id=None):
     conn = get_connection()
@@ -264,7 +264,7 @@ def delete_revenue(revenue_id):
     conn.close()
 
 
-# ── Employees ─────────────────────────────────────────────────────────────────
+# -- Employees -----------------------------------------------------------------
 
 def get_employees(active_only=True):
     conn = get_connection()
@@ -316,7 +316,7 @@ def add_work_log(employee_id, project_id, hours, log_date, description):
     conn.close()
 
 
-# ── Aggregations for dashboard / reports ─────────────────────────────────────
+# -- Aggregations --------------------------------------------------------------
 
 def get_project_summary():
     conn = get_connection()
@@ -343,7 +343,6 @@ def get_project_summary():
 
 
 def get_cashflow_timeline():
-    """Returns monthly in/out for the next 12 months plus history."""
     conn = get_connection()
     c = conn.cursor()
 
