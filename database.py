@@ -1,11 +1,21 @@
 import psycopg2
 import psycopg2.extras
 import streamlit as st
+import socket
+import urllib.parse
 
 
 def get_connection():
     url = st.secrets["DATABASE_URL"]
-    conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+    # Force IPv4 — Streamlit Cloud has no IPv6 routing to Supabase
+    try:
+        parsed = urllib.parse.urlparse(url)
+        hostname = parsed.hostname
+        ipv4 = socket.getaddrinfo(hostname, None, socket.AF_INET)[0][4][0]
+        url = url.replace(f"@{hostname}", f"@{ipv4}")
+    except Exception:
+        pass
+    conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor, sslmode="require")
     return conn
 
 
