@@ -4,34 +4,18 @@ import streamlit as st
 import urllib.parse
 
 
-@st.cache_resource
-def _get_pooler_url():
-    """Auto-discover working Supabase pooler (IPv4). Cached for server lifetime."""
+def get_connection():
+    """Connect via Supabase Supavisor pooler (IPv4, transaction mode)."""
     base_url = st.secrets["DATABASE_URL"]
     parsed = urllib.parse.urlparse(base_url)
     password = parsed.password
-    dbname = parsed.path.lstrip('/')
-    project = 'faqkoflkjexraukvhhun'
-    regions = [
-        'eu-central-1', 'eu-west-1', 'eu-west-2',
-        'us-east-1', 'us-west-1',
-        'ap-southeast-1', 'ap-northeast-1',
-    ]
-    for region in regions:
-        host = f'aws-0-{region}.pooler.supabase.com'
-        url = f'postgresql://postgres.{project}:{password}@{host}:5432/{dbname}'
-        try:
-            conn = psycopg2.connect(url, sslmode='require', connect_timeout=4)
-            conn.close()
-            return url
-        except Exception:
-            continue
-    return base_url  # last resort
-
-
-def get_connection():
-    url = _get_pooler_url()
-    return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor, sslmode='require')
+    # Use the correct Supabase pooler — IPv4-compatible, port 6543
+    pooler_url = (
+        f"postgresql://postgres.faqkoflkjexraukvhhun:{password}"
+        f"@aws-1-eu-west-1.pooler.supabase.com:6543/postgres"
+        f"?sslmode=require"
+    )
+    return psycopg2.connect(pooler_url, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
 def init_db():
@@ -338,11 +322,7 @@ def get_project_summary():
     c = conn.cursor()
     c.execute(
         """SELECT
-               p.id,
-               p.name,
-               p.status,
-               p.start_date,
-               p.end_date,
+               p.id, p.name, p.status, p.start_date, p.end_date,
                COALESCE(SUM(DISTINCT CASE WHEN r.status='received' THEN r.actual_amount END), 0) as actual_revenue,
                COALESCE(SUM(DISTINCT r.planned_amount), 0) as planned_revenue,
                COALESCE(SUM(DISTINCT e.amount), 0) as total_expenses
@@ -360,7 +340,6 @@ def get_project_summary():
 def get_cashflow_timeline():
     conn = get_connection()
     c = conn.cursor()
-
     c.execute(
         """SELECT
                SUBSTRING(COALESCE(planned_date, actual_date), 1, 7) as month,
@@ -372,7 +351,6 @@ def get_cashflow_timeline():
            GROUP BY month"""
     )
     revenues = c.fetchall()
-
     c.execute(
         """SELECT
                SUBSTRING(COALESCE(planned_date, actual_date), 1, 7) as month,
@@ -383,6 +361,5 @@ def get_cashflow_timeline():
            GROUP BY month"""
     )
     expenses = c.fetchall()
-
     conn.close()
     return [dict(r) for r in revenues] + [dict(r) for r in expenses]
